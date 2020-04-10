@@ -51,6 +51,13 @@ let events = [
     FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
 ]
 
+open Events
+let handler =
+    function
+    | Some(ProductSkuAdded(e)) -> printfn "handing ProductSkuAdded: %A" e
+    | Some(ProductPriceAdjusted(e)) -> printfn "handing ProductPriceAdjusted: %A" e
+    | None -> printfn "unknown event"
+
 [<EntryPoint>]
 let main argv =
     let e = prodAddEvent |> des<Events.ProductSkuAdded>
@@ -58,5 +65,5 @@ let main argv =
     printfn "Decoded events:"
     events
     |> List.map Events.decode
-    |> printfn "%A"
+    |> List.iter handler
     0
