@@ -19,14 +19,14 @@ module Events =
         Id: Guid
         Name: string
         Price: decimal option
-        SKU: string
+        Sku: string
         TimeStamp: DateTime
     }
 
     type ProductPriceAdjusted = {
         Id: Guid
-        ProductId: Guid
-        Price: decimal option
+        Sku: string
+        Price: decimal
         Timestamp: DateTime
     }
 
@@ -46,9 +46,17 @@ let prodAddEvent = """
 }"""
 //1586456505000
 
+let prodPriceAdjustedEvent = """
+{"id":"b5ddc517-aeb5-4fb0-a659-488fd4f1dcc7",
+"sku": "012-3456",
+"Price": 99.99,
+"timestamp": "2020-04-09 19:21:46"
+}"""
+
 let utf8 (s : string) = System.Text.Encoding.UTF8.GetBytes(s)
 let events = [
     FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
+    FsCodec.Core.TimelineEvent.Create(1L, "ProductPriceAdjusted", utf8 prodPriceAdjustedEvent)
 ]
 
 open Events
