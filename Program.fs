@@ -10,33 +10,53 @@ open Newtonsoft
 open FsCodec
 open FsCodec.NewtonsoftJson
 
-type ProductSkuAdded = {
-    Id: Guid
-    Name: string
-    Price: decimal option
-    SKU: string
-    TimeStamp: DateTime
-}
+let inline des<'t> x = Serdes.Deserialize<'t> x
 
-type ProductPriceAdjusted = {
-    Id: Guid
-    ProductId: Guid
-    Price: decimal option
-    TimeStamp: DateTime
-}
+module Events =
+//TODO: check Guid types either JsonIsomorphism or tagged string (UMX)
+// using Newtonsoft wich already handles guids fine...
+    type ProductSkuAdded = {
+        Id: Guid
+        Name: string
+        Price: decimal option
+        SKU: string
+        TimeStamp: DateTime
+    }
 
-let prodAddEvent = """{"id":"37a17c49-8d31-4cf3-860f-4fa916a6b815",
+    type ProductPriceAdjusted = {
+        Id: Guid
+        ProductId: Guid
+        Price: decimal option
+        Timestamp: DateTime
+    }
+
+    type Event = 
+        | ProductSkuAdded of ProductSkuAdded
+        | ProductPriceAdjusted of ProductPriceAdjusted
+        interface TypeShape.UnionContract.IUnionContract
+
+    let codec = FsCodec.NewtonsoftJson.Codec.Create<Event>() 
+    let decode = codec.TryDecode 
+
+let prodAddEvent = """
+{"id":"37a17c49-8d31-4cf3-860f-4fa916a6b815",
 "name": "firstproduct",
 "sku": "012-3456",
 "timestamp": "2020-04-09 19:21:45"
 }"""
 //1586456505000
 
-// FsCodec.NewtonsoftJson.Codec.Create<ProductSkuAdded>
-let inline des<'t> x = Serdes.Deserialize<'t> x
+let utf8 (s : string) = System.Text.Encoding.UTF8.GetBytes(s)
+let events = [
+    FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
+]
 
 [<EntryPoint>]
 let main argv =
-    let e = prodAddEvent |> des<ProductSkuAdded>
-    printfn "Deserialized raw json to domain event: %A" e
+    let e = prodAddEvent |> des<Events.ProductSkuAdded>
+    printfn "Deserialized raw json to domain event. Options & casing handled:\n%A" e
+    printfn "Decoded events:"
+    events
+    |> List.map Events.decode
+    |> printfn "%A"
     0
