@@ -33,6 +33,7 @@ module Events =
     type Event = 
         | ProductSkuAdded of ProductSkuAdded
         | ProductPriceAdjusted of ProductPriceAdjusted
+        | UnhandledEvent
         interface TypeShape.UnionContract.IUnionContract
 
     let codec = FsCodec.NewtonsoftJson.Codec.Create<Event>() 
@@ -57,6 +58,7 @@ let utf8 (s : string) = System.Text.Encoding.UTF8.GetBytes(s)
 let events = [
     FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
     FsCodec.Core.TimelineEvent.Create(1L, "ProductPriceAdjusted", utf8 prodPriceAdjustedEvent)
+    FsCodec.Core.TimelineEvent.Create(2L, "UnhandledEvent", utf8 "")
 ]
 
 open Events
@@ -64,6 +66,7 @@ let handler =
     function
     | Some(ProductSkuAdded(e)) -> printfn "handing ProductSkuAdded: %A" e
     | Some(ProductPriceAdjusted(e)) -> printfn "handing ProductPriceAdjusted: %A" e
+    | Some(_) -> printfn "unhandled event"
     | None -> printfn "unknown event"
 
 [<EntryPoint>]
@@ -72,6 +75,7 @@ let main argv =
     printfn "Deserialized raw json to domain event. Options & casing handled:\n%A" e
     printfn "Decoded events:"
     events
+    //TODO: decoding error handling - pass in ILogger
     |> List.map Events.decode
     |> List.iter handler
     0
