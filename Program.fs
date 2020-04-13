@@ -20,7 +20,7 @@ module Events =
         Name: string
         Price: decimal option
         Sku: string
-        TimeStamp: DateTime
+        Timestamp: DateTime
     }
 
     type ProductPriceAdjusted = {
@@ -38,6 +38,55 @@ module Events =
 
     let codec = FsCodec.NewtonsoftJson.Codec.Create<Event>() 
     let decode = codec.TryDecode 
+
+module Projection =
+    open Events
+
+    type ReadModel = {
+        //used as id
+        Sku: string
+        Name: string
+        Price: decimal option
+        LastUpdated: DateTime option
+        Version: int64
+    }
+    let private empty = {
+        //used as id
+        Sku = ""
+        Name = ""
+        Price = None
+        LastUpdated = None
+        Version = int64 0
+    }
+
+    type Projection = Map<string, ReadModel>
+
+    let handler model (event: Events.Event) =
+        match event with
+        | ProductSkuAdded e -> 
+            { model with 
+                Sku = e.Sku
+                Name = e.Name
+                Price = e.Price
+                LastUpdated = Some e.Timestamp
+                Version = model.Version + int64 1 }
+        | ProductPriceAdjusted e ->
+            { model with 
+                Price = Some e.Price
+                LastUpdated = Some e.Timestamp
+                Version = model.Version + int64 1 }
+        | UnhandledEvent -> model
+
+    type Evolve = Projection -> (String * Events.Event list) -> Projection
+
+    let evolveState: Evolve = 
+        fun state (streamId, events) ->
+        let currentModel = 
+            Map.tryFind streamId state
+            |> Option.defaultValue empty
+        state
+        |> Map.add streamId
+            (events |> List.fold handler currentModel)        
 
 let prodAddEvent = """
 {"id":"37a17c49-8d31-4cf3-860f-4fa916a6b815",
