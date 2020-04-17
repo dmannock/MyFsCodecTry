@@ -37,7 +37,7 @@ module Events =
         interface TypeShape.UnionContract.IUnionContract
 
     let codec = FsCodec.NewtonsoftJson.Codec.Create<Event>() 
-    let decode = codec.TryDecode 
+    let (|Decode|_|) = codec.TryDecode 
 
 module ProductProjection =
     open Events
@@ -77,13 +77,18 @@ module ProductProjection =
 
     let initialState = Map.empty<string, Product>
 
-    let evolve state (streamId, events) = 
-        let currentProduct = 
-            state
-            |> Map.tryFind streamId 
-            |> Option.defaultValue empty
+    let get state streamId = 
         state
-        |> Map.add streamId (fromHistory currentProduct events)        
+        |> Map.tryFind streamId 
+        |> Option.defaultValue empty
+
+    let evolve state (streamId, events) = 
+        let currentProduct = get state streamId
+        state |> Map.add streamId (fromHistory currentProduct events)        
+
+    let evolveSingle state (streamId, event) = 
+        let currentProduct = get state streamId
+        state |> Map.add streamId (applyEvent currentProduct event)        
 
 let prodAddEvent = """
 {"id":"37a17c49-8d31-4cf3-860f-4fa916a6b815",
@@ -91,7 +96,6 @@ let prodAddEvent = """
 "sku": "012-3456",
 "timestamp": "2020-04-09 19:21:45"
 }"""
-//1586456505000
 
 let prodPriceAdjustedEvent = """
 {"id":"b5ddc517-aeb5-4fb0-a659-488fd4f1dcc7",
@@ -100,11 +104,19 @@ let prodPriceAdjustedEvent = """
 "timestamp": "2020-04-09 19:21:46"
 }"""
 
+let prodAddEvent2 = """
+{"id":"84050f10-cb42-4223-8aed-e38c97929242",
+"name": "secondproduct",
+"sku": "023-4567",
+"timestamp": "2020-04-17 19:21:45"
+}"""
+
 let utf8 (s : string) = System.Text.Encoding.UTF8.GetBytes(s)
 let events = [
-    FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
-    FsCodec.Core.TimelineEvent.Create(1L, "ProductPriceAdjusted", utf8 prodPriceAdjustedEvent)
-    FsCodec.Core.TimelineEvent.Create(2L, "UnhandledEvent", utf8 "")
+    StreamName.parse "Product-5e29e373-d092-4bc0-94d9-3cf8e48ed5fb", FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent)
+    StreamName.parse "Product-5e29e373-d092-4bc0-94d9-3cf8e48ed5fb", FsCodec.Core.TimelineEvent.Create(1L, "ProductPriceAdjusted", utf8 prodPriceAdjustedEvent)
+    StreamName.parse "Product-5e29e373-d092-4bc0-94d9-3cf8e48ed5fb", FsCodec.Core.TimelineEvent.Create(2L, "UnhandledEvent", utf8 "")
+    StreamName.parse "Product-c7718eda-e628-4633-a082-62ccd29c7c76", FsCodec.Core.TimelineEvent.Create(0L, "ProductSkuAdded", utf8 prodAddEvent2)
 ]
 
 [<EntryPoint>]
@@ -115,7 +127,14 @@ let main argv =
     let decoded = 
         events
         //TODO: decoding error handling - pass in ILogger
-        |> List.choose Events.decode
-    let finalState = ProductProjection.evolve ProductProjection.initialState ("Product-e0c32404-1393-4deb-9614-224b1d7c26fc", decoded)
+        |> List.choose (fun (stream, e) ->
+            match stream, e with
+            | StreamName.CategoryAndId(_, id), (Events.Decode e) -> Some(id, e)
+            | _ ->
+                //simulate logging
+                printfn "Failed to deserialize StreamName=%s Index=%d Event=%A CausationId=%s CorrelationId=%s"
+                    (StreamName.toString stream) e.Index e.EventType e.CausationId e.CorrelationId
+                None)
+    let finalState = decoded |> List.fold ProductProjection.evolveSingle ProductProjection.initialState 
     printfn "Final state: %A" finalState
     0
