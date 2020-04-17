@@ -39,11 +39,10 @@ module Events =
     let codec = FsCodec.NewtonsoftJson.Codec.Create<Event>() 
     let decode = codec.TryDecode 
 
-module Projection =
+module ProductProjection =
     open Events
 
-    type ReadModel = {
-        //used as id
+    type Product = {
         Sku: string
         Name: string
         Price: decimal option
@@ -51,7 +50,6 @@ module Projection =
         Version: int64
     }
     let private empty = {
-        //used as id
         Sku = ""
         Name = ""
         Price = None
@@ -59,9 +57,7 @@ module Projection =
         Version = int64 0
     }
 
-    type Projection = Map<string, ReadModel>
-
-    let handler model (event: Events.Event) =
+    let applyEvent model (event: Event) =
         match event with
         | ProductSkuAdded e -> 
             { model with 
@@ -77,16 +73,17 @@ module Projection =
                 Version = model.Version + int64 1 }
         | UnhandledEvent -> model
 
-    type Evolve = Projection -> (String * Events.Event list) -> Projection
+    let fromHistory = List.fold applyEvent     
 
-    let evolveState: Evolve = 
-        fun state (streamId, events) ->
-        let currentModel = 
-            Map.tryFind streamId state
+    let initialState = Map.empty<string, Product>
+
+    let evolve state (streamId, events) = 
+        let currentProduct = 
+            state
+            |> Map.tryFind streamId 
             |> Option.defaultValue empty
         state
-        |> Map.add streamId
-            (events |> List.fold handler currentModel)        
+        |> Map.add streamId (fromHistory currentProduct events)        
 
 let prodAddEvent = """
 {"id":"37a17c49-8d31-4cf3-860f-4fa916a6b815",
@@ -110,21 +107,15 @@ let events = [
     FsCodec.Core.TimelineEvent.Create(2L, "UnhandledEvent", utf8 "")
 ]
 
-open Events
-let handler =
-    function
-    | Some(ProductSkuAdded(e)) -> printfn "handing ProductSkuAdded: %A" e
-    | Some(ProductPriceAdjusted(e)) -> printfn "handing ProductPriceAdjusted: %A" e
-    | Some(_) -> printfn "unhandled event"
-    | None -> printfn "unknown event"
-
 [<EntryPoint>]
 let main argv =
     let e = prodAddEvent |> des<Events.ProductSkuAdded>
     printfn "Deserialized raw json to domain event. Options & casing handled:\n%A" e
     printfn "Decoded events:"
-    events
-    //TODO: decoding error handling - pass in ILogger
-    |> List.map Events.decode
-    |> List.iter handler
+    let decoded = 
+        events
+        //TODO: decoding error handling - pass in ILogger
+        |> List.choose Events.decode
+    let finalState = ProductProjection.evolve ProductProjection.initialState ("Product-e0c32404-1393-4deb-9614-224b1d7c26fc", decoded)
+    printfn "Final state: %A" finalState
     0
